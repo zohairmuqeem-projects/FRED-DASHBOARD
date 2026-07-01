@@ -1,0 +1,520 @@
+---
+format: html
+editor: visual
+---
+
+```{=html}
+<style>
+  body {
+    font-family: 'Georgia', serif;
+  }
+  h1, h2, h3 {
+    font-family: 'Georgia', serif;
+  }
+  p, li {
+    font-family: 'Georgia', serif;
+    line-height: 1.7;
+  }
+</style>
+```
+
+
+
+$\huge \textbf{FREDR Data Pipeline Sample}$
+
+$\large \text{Zohair Muqeem}$
+
+------------------------------------------------------------------------
+
+$\huge \textbf{1. Introduction}$
+
+In Quantitative Trading, researchers use data-driven models to identify trading opportunities and manage portfolio risk. These models are constructed using a combination of mathematics, statistics, and economic indicators which predict future market conditions. Importantly, several of these indicators are sourced from Federal Reserve Banks, such as the St. Louis FRED API. In this project, we will analyze such indicators and compare several approaches toward predicting a stock volatility metric called VIX.
+
+The Federal Reserve Bank St. Louis API can be accessed via the [FRED API Documentation](https://fred.stlouisfed.org/docs/api/fred/). For our analysis, we selected the following economic indicators: federal funds rate, yield curve spread, VIX, and high yield spread. We begin by gathering the data through FRED API tickers, which correspond respectively to each indicator. A basic description of each ticker and associated economic indicator is provided below:
+
+-   **T10Y2Y (yield_curve_spread):** The Yield Curve Spread refers to the 10-Year Constant Maturity rate subtracted by the 2-Year Treasury Constant Maturity. As an indicator, this represents the slope of the bond yield curve, or return on bond investments. Generally, this spread is positive as investors demand a higher yield on a 10-year investment versus a 2-year investment. However, when this value dips below zero and resembles an inverted yield curve, it indicates that short-term interest rates have surpassed long-term rates. Often, a sustained yield curve inversion across multiple periods has been correlated with economic recessions. This is due to future returns being lower than the two-year window, indicating recessed economic conditions and future uncertainty.
+
+-   **BAMLH0A0HYM2 (high_yield_spread):** The High Yield Spread measures the daily market-priced premium that junk corporate bonds pay over their equivalent-maturity risk-free Treasuries. This approach attempts to isolate pure credit risk, as it strips out embedded options such as callable clauses. Importantly, we describe the High Yield Spread as the difference between those junk bond yields and risk-free U.S. Treasury yields. Therefore, when the spread is low, we generally assume that investors are confident and market conditions are stable, as junk bond yields and risk-free U.S. Treasury yields are closer to one another. On the other hand, when the spread is widening, investors are hesitant, as they are worried that companies may default on their debts. This causes the percentage difference to widen as the premium on junk bonds increases due to investor fear. Investors during this period are concerned that bonds may default and charge a higher premium given the associated risk and poor economic conditions.
+
+-   **DFF (fed_funds_rate):** The Federal Funds Rate is the volume-weighted median rate at which banks trade reserve balances with one another on an uncollateralized basis. Likewise, it represents the interest rate set by the Federal Open Market Committee (FOMC) to expand and contract the economy. The Federal Funds Rate is heavily utilized as a benchmark for macro liquidity, leverage costs, and cash flow future discounting. Generally, a higher Federal Funds Rate indicates the FOMC's desire to contract the economy, and vice versa. This is due to a higher interest rate making it more expensive to borrow money and expand business ventures. On the other hand, a lower interest rate injects money into the economy through loans, which bolsters business expansion and financial activity.
+
+-   **VIXCLS (vix):** VIX represents the Chicago Board Options Exchange (CBOE) Volatility Index. Specifically, VIX measures the 30-day forward-looking market expectation. This value is calculated in real time using the implied volatility of a basket of S&P 500 index options. As the stock market declines during bear markets, it operates as an indicator for forecasting asset-class volatility risks. When option prices increase, we observe an increase in VIX, as market makers increase premiums due to elevated market risk. On the other hand, VIX decreases during a bull market, where option prices decrease due to minimized risk in the stock market.
+
+Through using economic indicators to predict VIX, hedge funds and investors can manage risk among portfolios. For example, an upwards trend in VIX may signal the necessity for asset relocation, buying protective options, or even just pricing financial derivatives. VIX allows for traders to recognize market fear, and exploit long and short positions to generate revenue. Short term volatility strategies can provide strong returns, or protect existing wealth.
+
+**The following sections are organized as follows:**
+
+-   **Section 2 — Data Extraction:** We retrieve our economic indicators from the FRED API and merge them into a single data set.
+
+-   **Section 3 — Economic Indicators Validation:** We validate our data set by examining observation counts by year, cross-relationships between indicators, and time series behavior of VIX.
+
+-   **Section 4 — Naive Linear Regression Approach:** We construct a baseline OLS regression model, evaluate its performance, and identify its limitations through residual diagnostics.
+
+-   **Section 5 — VAR (Vector Auto Regression) Approach:** We construct a Vector Autoregression model to account for the temporal structure of our data, and utilize lags to improve performance across shifts in economic policy and market conditions.
+
+------------------------------------------------------------------------
+
+$\huge \textbf{2. Data Extraction}$
+
+
+
+```{r}
+#| message: false
+#| warning: false
+library(fredr)
+library(gganimate)
+library(glue)
+library(knitr)
+library(kableExtra)
+library(GGally)
+library(vars)
+library(tidyverse)
+
+fredr_set_key(Sys.getenv("FRED_API_KEY"))
+source("pipeline.R")
+macro_indicators = API_data_extraction()
+head(macro_indicators)
+```
+
+
+
+Now, utilizing our modular pipeline.R script, we access the Federal Reserve Economic Data (FRED) system via an API Access key. The function API_data_extraction then automates the retrieval for our four targeted tickers: T10Y2Y, BAMLH0A0HYM2, DFF, and VIXCLS.
+
+Additionally, our script implements the following data cleaning changes:
+
+-   Observations are joined based on matching calendar dates to properly measure VIX's relationships with variables across time.
+
+-   Missing values are dropped and data-frame is converted to a tibble data-frame for easier data manipulation and analysis.
+
+-   Variables are remapped from tickers to their respective economic indicator (high yield spread, yield spread curve, federal funds rate, and vix).
+
+------------------------------------------------------------------------
+
+$\huge \textbf{3. Economic Indicators Validation}$
+
+Before constructing models, let's observe the number of observations in each year. This is especially important for stock forecasting, as downturns in economic conditions can introduce bias into our models. For example, the recent advances in Artificial Intelligence have boosted stock prices among the tech sector, which may not be representative of future market conditions.
+
+
+
+```{r}
+year_analysis_df = macro_indicators %>%
+  mutate(date = as.integer(str_extract(date, "^\\d{4}")))
+
+year_analysis_df %>% 
+  count(date) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = "condensed" , full_width = FALSE)
+```
+
+
+
+We observe a larger number of observations in 2024 and 2025, and fewer observations in 2023 and 2026. This may introduce bias into our models toward imitating the massive surge in Big Tech and Communication Services driven by Artificial Intelligence. Moreover, during this period the S&P 500 experienced a historic bull run alongside Federal Reserve interest rate cuts, inflation stabilization, and shifting presidential policies.
+
+Let's also observe the cross-relationships and correlation matrix across our economic indicators.
+
+
+
+```{r}
+ggpairs(year_analysis_df, progress = FALSE)
+
+```
+
+
+
+As expected, several of our indicators share very high correlation values with one another. For example, the Federal Funds Rate and Yield Curve Spread are strongly correlated. This is due to short-term treasury bonds acting as direct forms of overnight cash. The relationship between the Federal Funds Rate and bond yields is effectively instantaneous, as an increase or decrease in the interest rate has a near-immediate effect on short-term bond yields.
+
+It is also important to visualize VIX fluctuation over time. This is especially useful for identifying periods where VIX is abnormally high, which may indicate periods of heightened uncertainty driven by new technological developments or macroeconomic shocks.
+
+
+
+```{r}
+ggplot(macro_indicators, aes(x = date, y = vix)) +
+  geom_line(color = 'red' , alpha = 1) +
+  labs(title = "Vix Fluctuation over Time" , x = 'Date' , y = 'Vix') +
+  theme(axis.title = element_text(size=10), title = element_text(size=15), plot.background = element_rect(fill = "transparent", color = NA) , panel.background = element_rect(fill = "transparent", color = NA) , legend.background = element_rect(fill = "transparent", color = NA) , legend.box.background = element_rect(fill = "transparent", color = NA)) +
+  annotate("text" , x = as.Date("2026-03-27" , 
+  tryFormats = c("%Y-%m-%d", "%Y/%m/%d"))	, 
+  y = 35, label = "March 27th 2026" ) +
+  annotate("text" , x = as.Date("2025-04-08" 
+, tryFormats = c("%Y-%m-%d", "%Y/%m/%d"))	, 
+y = 55, label = "April 8th 2025" ) +
+  annotate("text" , x = as.Date("2024-08-05" , 
+tryFormats = c("%Y-%m-%d", "%Y/%m/%d"))	, y = 45,
+label = "August 5th 2024" ) 
+  
+```
+
+
+
+We observe several extreme peaks, corresponding with the following real-world events:
+
+-   August 5th, 2024: VIX experienced a surge as a result of a sharp increase in the interest rate for Japanese Yen. Hedge funds frequently borrow cheaper yen to buy U.S. stocks as it generally has lower borrowing costs than USD. However, when the interest rate rose, margins calls were initiated and caused a historic crash in Japan's stock as investors scrambled to buy back Japanese Yen.
+
+-   April 8th 2025: VIX reached a extremely high abnormal value in response to the Liberation Day Tariffs imposed by President Trump, which disrupted global supply chains and slowed economic activity severely. These tariffs were effective quickly, and froze many companies international trade routes.
+
+-   March 27th 2026: VIX spikes due to conflict in the Middle East, mainly regarding oil prices and supply. Global crude oil prices rose sharply, and investors rotated capital out of assets in fear of entering a wartime economy.
+
+Otherwise, we observe that VIX fluctuates periodically across years, with peaks and troughs that follow changing economic conditions. Importantly, this known variance in VIX may allow for meaningful model prediction, as we will attempt various methods to predict VIX fluctuation across time.
+
+In addition, it is beneficial to observe our other economic indicators across time. Below are visualizations of our economic indicators against VIX across time, utilizing the gganimate and ggplot2 libraries.
+
+
+
+```{r}
+#| message: false
+#| warning: false
+set.seed(24)
+render = lapply(names(macro_indicators)[c(2,3,4)], function(name){
+  
+ggplot(macro_indicators, aes(x = .data[[name]], y = vix, color = date)) +
+  geom_point(alpha = 0.3, size = 2) +
+  geom_smooth(method = "loess", color = "black", se = TRUE) +
+  scale_color_viridis_c(
+    trans = "date",
+    labels = function(x) format(as.Date(x, origin = "2000-01-01"), "%Y")
+  ) +
+  labs(title = glue("VIX vs {name}"), x = name, y = "VIX", color = "Year") +
+  theme_minimal()
+  
+})
+
+```
+
+
+
+First, let's observe how VIX fluctuates relative to the Yield Curve Spread over time.
+
+
+
+```{r}
+render[[1]]
+
+```
+
+
+
+As expected, this relationship is extremely nonlinear across time, as economic conditions fluctuate throughout the year due to interest rate adjustments, policies, and technological advancements. However, we can observe that higher VIX values tend to be recorded during periods of positive Yield Curve Spreads, where the slope of the bond yield curve is positive. This indicates a healthy economy, where business expansion and new technological developments introduce volatility into the VIX indicator.
+
+Next, let's observe how VIX fluctuates relative to the High Yield Spread over time.
+
+
+
+```{r}
+render[[2]]
+```
+
+
+
+Our plot does not fully match the assumed relationship between VIX and High Yield Spread. Intuitively, we expect that higher High Yield Spreads would correspond to higher VIX values, as elevated premiums indicate a deteriorating equity market. In our plot, this is partially true, as values between 3.5 and 4.0 correspond to the highest VIX peaks. However, beyond 4.5 we do not observe extremely large VIX values. Likewise, at lower High Yield Spread values, where premiums are low and bond defaults are less apparent, we observe several VIX spikes. We will later test the statistical significance of this variable in a linear regression framework to determine whether High Yield Spread operates as a meaningful predictor of VIX.
+
+Finally, let's observe how VIX fluctuates relative to the Federal Funds Rate over time.
+
+
+
+```{r}
+render[[3]]
+```
+
+
+
+As expected, at a higher Federal Funds Rate money is more expensive to borrow, as the FOMC attempts to cool down an overheated economy and reduce inflation. During this period, business expansion slows alongside technological advancement, and VIX does not spike significantly. On the other hand, at lower Federal Funds Rates we observe higher VIX spikes, due to reduced lending costs which encourage business expansion and innovation.
+
+------------------------------------------------------------------------
+
+$\huge \textbf{4. Contemporaneous Linear Regression Approach}$
+
+Although in the previous section we observed that VIX contains nonlinear relationships with our predictors, we can utilize a contemporaneous linear regression approach as a benchmark. For our analysis, we will use the following standard linear regression specification.
+
+$\large y = \beta_o + \beta_{1}x_1 + \beta_{2}x_2 + \dots + \ \varepsilon$
+
+
+
+```{r}
+full_model = lm(vix ~ high_yield_spread + 
+yield_curve_spread + fed_funds_rate , data = macro_indicators)
+summary(full_model)
+```
+
+
+
+Our full model represents the following fitted regression equation for predicted VIX and our respective coefficients. Our $R^2 \approx 0.5$, which indicates that only about 50% of the variation in VIX is explained by our selected economic indicators. This is poor model fit, and is not an acceptable level of predictive accuracy in quantitative trading.
+
+We can model our linear regression with the following specification:
+
+$\large \hat{y}_{vix} = \beta_{intercept} + \beta_{high\_yield\_spread}x_1 + \beta_{yield\_curve\_spread}x_2 + \beta_{fed\_funds\_rate}x_3$
+
+$\large \hat{y}_{vix} = -2.937 +  6.7802x_1 + 7.74272x_2 + (-0.5123)x_3$
+
+Next, we will use an Analysis of Variance (ANOVA) comparison test to evaluate whether at least one of our coefficients contributes meaningfully to predicting VIX.
+
+
+
+```{r}
+control = lm(vix ~ NULL , data = macro_indicators)
+anovafullmodel = anova(full_model , control)
+anovafullmodel
+```
+
+
+
+Since $\large p_{val} = 2.2 \times 10^{-16}\leq\alpha(0.05)$, we reject the null hypothesis. There is significant evidence to suggest that at least one of $\large \beta_{high\_yield\_spread},\beta_{yield\_curve\_spread} , \beta_{fed\_funds\_rate} \neq 0$.
+
+Previously, we found that the High Yield Spread plot did not exhibit a strong visual correlation with VIX. To test for High Yield Spread's significance, we will compare a reduced model against the full model to evaluate whether this indicator contributes meaningfully. The following equation represents our reduced model.
+
+$\large \hat{y}_{vix} = \beta_{intercept} +  \beta_{yield\_curve\_spread}x_2 + \beta_{fed\_funds\_rate}x_3$
+
+
+
+```{r}
+reduced_model = lm(vix ~ yield_curve_spread + fed_funds_rate , data = macro_indicators)
+anovareg2 = anova(reduced_model , full_model)
+anovareg2
+```
+
+
+
+Since $\large p_{val} = 2.2 \times 10^{-16}\leq\alpha(0.05)$, we reject the null hypothesis. There is significant evidence to suggest that $\large \beta_{high\_yield\_spread}$ contributes to the model significantly and should be retained.
+
+Let's also examine the coefficient correlation matrix within our full model.
+
+
+
+```{r}
+cov2cor(vcov(full_model))
+```
+
+
+
+As expected, there is a high correlation between our Federal Funds Rate and Yield Curve Spread coefficients. Otherwise, we observe reasonable independence among the remaining coefficients. Since our model contains few variables, there does not appear to be strong justification for removing variables based on covariance alone.
+
+
+
+```{r}
+plot(full_model, which = 1)
+```
+
+```{r}
+acf(residuals(full_model))
+```
+
+
+
+Unfortunately, a large number of our residuals fall outside the confidence interval bounds shown in the ACF plot. This indicates that our residuals are not random and are correlated across specific time cycles. This is likely due to additional variables influencing VIX that also correspond with time and are not captured by our linear regression model. These findings motivate a more sophisticated approach for finding a model with better predictive performance for VIX.
+
+$\huge \textbf{5. First-Difference Linear Regression Approach}$
+
+Given our Contemporaneous linear model, we will quickly examine whether an introduced First-Difference approach may have better model fit. For this approach, we will utilize a lag of 3 months, or 63 trading days to observe gradual changes in VIX and reduce time bias in our predictions. Instead of correlating results with the same-day market, we can set our economic indicators back and observe whether changing economic conditions affect VIX over a longer time period. Importantly, we reduce bias but not correlating present VIX results with our economic indicators, but instead by using previous market conditions. This relative growth or change is similar so slope, but only representing the non standardized unit.
+
+For our model, we will use the following model specification and delta.
+
+
+$\hat{y}_{\mathrm{VIX}_t} = \beta_0 + \beta_{1}\Delta\mathrm{yield\_curve\_spread}_{t-1} + \beta_{2}\Delta\mathrm{high\_yield\_spread}_{t-1} + \beta_{3}\Delta\mathrm{federal\_funds\_rate}_{t-1}$
+
+
+Where,
+$\Delta X_{t-i} = X_{t-i} - X_{t-i-63}, \quad t = \text{trading day}, \text{and}\quad X = \text{Predictive Economic Indicators}$
+
+We will first create out delta matrix for our indicators
+
+
+```{r}
+delta_frame = lapply(names(macro_indicators)[c(2,3,4)],function(name){
+  macro_indicators %>%
+    arrange(date) %>%
+    mutate("{name}_l" := .data[[name]] - lag(.data[[name]], 63)) %>%
+    select(date, paste0(name, "_l")) %>%
+    drop_na()
+})
+
+  delta_df = delta_frame %>%
+    reduce(inner_join , by = 'date') %>%
+    inner_join(macro_indicators, by = 'date') %>%
+    arrange(date) %>%
+    drop_na() %>%
+    as_tibble()
+
+delta_df[is.infinite(as.matrix(delta_df))  |is.nan(as.matrix(delta_df))]= NA
+
+delta_df = delta_df %>% drop_na()
+head(delta_df)
+```
+
+
+After applying our transformation and retaining our raw VIX values. We
+can now fit the model.
+
+
+
+```{r}
+delta_full_model = lm(vix ~ high_yield_spread_l + yield_curve_spread_l
+                  + fed_funds_rate_l  , data = delta_df)
+summary(delta_full_model)
+```
+
+
+Our formula is fitted with the following specification.
+
+
+$\hat{y}_{\mathrm{VIX}_t} = 18.1535 + 6.6210\Delta\mathrm{yield\_curve\_spread}_{t-1} + (-2.8425)\Delta\mathrm{high\_yield\_spread}_{t-1} + (-2.0179)\Delta\mathrm{federal\_funds\_rate}_{t-1}$
+
+
+As expected, when eliminating time bias we received $R^2 = 0.4366$. Once again, our linear model without being provided the present market conditions is rather ineffective at predicting VIX. Thus, we must change our approach given the nonlinear relationship among our economic indicators. 
+
+$\huge \textbf{6. VAR (Vector Autoregression) Approach}$
+
+Given that our residuals are auto-correlated, there exist specific lag windows which our model should consider when predicting VIX. In addition, our model fit is rather poor ($R^2 = 0.5$), which is partly caused by our nonlinear relationships between economic indicators and VIX. To account for the temporal lag structure and improve model fit, we will use a Vector Auto Regression approach to predict VIX.
+
+First, let's construct an optimal lag length for VAR. We can find this value by minimizing the Akaike Information Criterion (AIC), Bayesian Information Criterion (BIC), Hannan-Quinn Criterion (HQ), and Final Prediction Error (FPE). Here, we are trying to balance model fit against model complexity by finding the minimum of each criterion.
+
+
+
+```{r}
+
+best_lag = VARselect(macro_indicators %>%
+                       arrange(date) %>% 
+select(yield_curve_spread , high_yield_spread, fed_funds_rate, vix),
+lag.max = 10 , type = "const" )
+                     
+best_lag$selection
+```
+
+
+
+Across 3 out of 4 metrics, we observe that a lag equal to 2 is most suitable for our model. A lag equal to 2 optimally balances model complexity against fit. However, we will opt for lag 3 to capture quarterly policy transmission lags which are consistent with the Federal Reserves meeting cycles and earning report cycles. Although we risk over-fitting the model, we may be able to gather stronger predictions which correspond with Federal Reserve agencies.
+
+Importantly, 3 lags produce $4 \times 3 = 12$ lag coefficients per equation, and $12 \times 4 = 48$ total lag coefficients across all four VAR equations.
+
+Next, let's fit our VAR model using the following specification.
+
+$Y_t = c + A_1 Y_{t-1} + A_2 Y_{t-2} + \dots + A_p Y_{t-p} + \varepsilon_t$
+
+
+
+```{r}
+var_model = VAR(macro_indicators %>% 
+                  arrange(date) %>% 
+select(yield_curve_spread , high_yield_spread,fed_funds_rate, vix), 
+p = 3 , type = "const")
+
+summary(var_model)$varresult$vix$coefficients
+summary(var_model)$varresult$vix$r.squared
+```
+
+
+
+We can model our VAR regression for VIX with the following specification:
+
+
+$$\begin{aligned}
+\hat{y}_{\mathrm{vix}} = \beta_{\mathrm{const}} 
+&+ \beta_{\mathrm{ycs.l1}}x_1 + \beta_{\mathrm{hys.l1}}x_2 + \beta_{\mathrm{ffr.l1}}x_3 + \beta_{\mathrm{vix.l1}}x_4 \\
+&+ \beta_{\mathrm{ycs.l2}}x_5 + \beta_{\mathrm{hys.l2}}x_6 + \beta_{\mathrm{ffr.l2}}x_7 + \beta_{\mathrm{vix.l2}}x_8 \\
+&+ \beta_{\mathrm{ycs.l3}}x_9 + \beta_{\mathrm{hys.l3}}x_{10} + \beta_{\mathrm{ffr.l3}}x_{11} + \beta_{\mathrm{vix.l3}}x_{12}
+\end{aligned}$$
+
+$$
+\begin{aligned}
+\hat{y}_{\mathrm{vix}} = 2.1485 
+&+ (-1.7416)x_1 + 6.2681x_2 + 2.2431x_3 + 0.6957x_4 \\
+&+ (-0.3836)x_5 + (-5.7349)x_6 + (-0.8695)x_7 + 0.1985x_8 \\
+&+ 2.4173x_9 + (-0.2722)x_{10} + (-1.5796)x_{11} + (-0.0117)x_{12}
+\end{aligned}
+$$
+
+Importantly, our $R^2 = 0.8415$ is substantially higher than our previous OLS model, indicating that 84% of the variation in VIX is explained by our economic indicators and their lags. Through incorporating lagged values, our model accounts for cyclical changes in the economy that instantaneous predictors alone cannot capture.
+
+Next, we will use a Portmanteau test to check for remaining autocorrelation in our residuals.
+
+
+
+```{r}
+serial.test(var_model, lags.pt = 10, type = "PT.adjusted")
+```
+
+
+
+Since $\large p_{val} = 0.06291 \geq\alpha(0.05)$, we fail to reject the null hypothesis of no autocorrelation. This suggests that our residuals behave as white noise and are not significantly correlated across dates, indicating that our VAR model has adequately captured the temporal structure in the data.
+
+We will also examine how a shock to the Federal Funds Rate affects VIX by inspecting the impulse response function.
+
+
+
+```{r}
+irf_model = irf(var_model, impulse = "fed_funds_rate" 
+                , response = "vix" , n.ahead = 20, boot = TRUE)
+
+plot(irf_model)
+```
+
+
+
+Since the zero line falls within the 95% confidence interval bands (dashed red lines) across all 20 periods, the impulse response of VIX to a Federal Funds Rate shock is not statistically distinguishable from zero. In other words, a shock to the Federal Funds Rate does not produce a significant lasting impact on VIX. Any initial spikes in the response decay over time, indicating that temporary volatility disturbances dissipate across subsequent periods.
+
+Let's also check the significance of our predictor variables. Similar to comparing a reduced model against a full model in OLS, we will utilize Granger causality tests to assess whether each economic indicator contains meaningful predictive information for VIX.
+
+
+
+```{r}
+causality(var_model, cause = "fed_funds_rate")
+```
+
+
+
+Here, we observe that the Federal Funds Rate does not Granger-cause VIX, as $\large p_{val} = 0.330 \geq \alpha(0.05)$. We fail to reject the null hypothesis, suggesting that past values of the Federal Funds Rate do not provide statistically significant predictive information for VIX beyond what is already captured by the other variables.
+
+
+
+```{r}
+causality(var_model, cause = "high_yield_spread")
+```
+
+
+
+In contrast, the High Yield Spread produces $\large p_{val} = 5.86 \times 10^{-9} \leq \alpha(0.05)$, providing significant evidence that High Yield Spread Granger-causes VIX. This suggests that changes in corporate credit risk contain meaningful predictive information for future equity market volatility.
+
+
+
+```{r}
+causality(var_model, cause = "yield_curve_spread")
+```
+
+
+
+For the Yield Curve Spread, we observe $\large p_{val} = 0.330 \geq \alpha(0.05)$. We fail to reject the null hypothesis, suggesting that past values of the Yield Curve Spread do not Granger-cause VIX in this model. Despite its strong correlation with the Federal Funds Rate, the Yield Curve Spread does not appear to provide additional predictive power for VIX beyond what is already accounted for by the other indicators.
+
+Finally, let's forecast the next 30 trading days.
+
+
+
+```{r}
+var_forecast_model = predict(var_model, n.ahead=30)
+plot(var_forecast_model, names = "vix")
+```
+
+
+
+Our forecast indicates VIX is expected to hover around 17 to 19. We can observe our 95% Prediction Intervals for VIX as well to observe ranges of values.
+
+
+
+```{r}
+last_date    = macro_indicators %>% pull(date) %>% tail(1)
+futuredates = seq(last_date + 1, by = "day", length.out = 30)
+df_fc <- data.frame(
+  Date = futuredates,
+  VIXForecast = round(var_forecast_model$fcst$vix[, "fcst"],2),
+  LowerPI    = round(var_forecast_model$fcst$vix[, "lower"],2),
+  UpperPI    = round(var_forecast_model$fcst$vix[, "upper"],2)
+)
+
+df_fc %>%
+  kable(format = "html",
+        col.names = c("Date", "VIX Forecast",
+                      "Lower PI (95%)", "Upper PI (95%)")) %>%
+  kable_styling(bootstrap_options = "condensed", full_width = FALSE)
+```
+
+
+
+Once again, our forecast indicates an average increasing from 17 to 19 within the next 30 trading days. Also, our 95% Prediction Interval indicates that VIX will remain within about 10-27 within the next 30 trading days.
+
