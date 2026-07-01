@@ -3,7 +3,8 @@
 This repository contains an interactive R Shiny dashboard and HTML Markdown which analyzes and predicts stock market volatility (VIX). The app features real-time economic data to provide quantiative statistics and insights into financial market trends.
 
 ## Markdown Analysis
-In-depth report validating and explaining economic variables used in the Live Interactive App can be found here: [FREDR DATA PIPELINE SAMPLE](https://zohair-muqeem.shinyapps.io/VIX_Prediction_Dashboard_ZOHAIRMUQEEM/_w_4bec673e57d5454b9ad30df199184cca/FREDR_Data_Pipeline_Sample_ZOHAIR_MUQEEM.html)
+In-depth report validating and explaining economic variables used in the Live Interactive App can be found here: 
+[FREDR DATA PIPELINE SAMPLE](https://zohair-muqeem.shinyapps.io/VIX_Prediction_Dashboard_ZOHAIRMUQEEM/_w_4bec673e57d5454b9ad30df199184cca/FREDR_Data_Pipeline_Sample_ZOHAIR_MUQEEM.html)
 
 ##  Live Interactive App
 Access the hosted dashboard via this link:
