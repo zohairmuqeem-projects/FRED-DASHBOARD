@@ -4,10 +4,12 @@ This repository contains an interactive R Shiny dashboard and HTML Markdown whic
 
 ## Markdown Analysis
 In-depth report validating and explaining economic variables used in the Live Interactive App can be found here: 
+
 [FREDR DATA PIPELINE SAMPLE](https://zohair-muqeem.shinyapps.io/VIX_Prediction_Dashboard_ZOHAIRMUQEEM/_w_4bec673e57d5454b9ad30df199184cca/FREDR_Data_Pipeline_Sample_ZOHAIR_MUQEEM.html)
 
 ##  Live Interactive App
 Access the hosted dashboard via this link:
+
 [FRED MACRO RISK DASHBOARD](https://zohair-muqeem.shinyapps.io/VIX_Prediction_Dashboard_ZOHAIRMUQEEM/)
 
 ##  Features
